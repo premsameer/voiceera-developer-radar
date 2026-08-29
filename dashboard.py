@@ -15,9 +15,56 @@ st.set_page_config(page_title="VoiceERA Developer Radar",layout="wide")
 init_db()
 with SessionLocal() as db: seed(db)
 PAGES=["Daily Radar","Developer Profile","Intelligence","Funnel Analytics","Sources & Health","Configuration","Run History"]
+PAGE_COPY={
+    "Daily Radar":("01 / RADAR","Developer intelligence, distilled.","Review fresh signals, qualify intent, and move the right builders forward."),
+    "Developer Profile":("02 / PROFILE","See the person behind the signal.","Trace activity, technology, organizations, and verified funnel progress."),
+    "Intelligence":("03 / INTELLIGENCE","Patterns worth acting on.","Understand how your developer audience is forming across segments."),
+    "Funnel Analytics":("04 / FUNNEL","From discovery to conversation.","Measure verified movement without losing the evidence behind it."),
+    "Sources & Health":("05 / SOURCES","A radar you can trust.","Keep every connector observable, current, and accountable."),
+    "Configuration":("06 / CONFIGURATION","Simple controls. Clear boundaries.","Inspect source settings while keeping credentials out of the interface."),
+    "Run History":("07 / HISTORY","Every scan leaves a trace.","Review completed runs, collection counts, and source-level errors."),
+}
+st.markdown("""
+<style>
+:root{--ink:#031011;--panel:#07191a;--panel-2:#0a2021;--cream:#f4efe6;--muted:rgba(244,239,230,.58);--line:rgba(244,239,230,.12);--cyan:#22bec6}
+.stApp{background:var(--ink);color:var(--cream)}
+[data-testid="stHeader"]{background:transparent}
+[data-testid="stToolbar"]{right:1rem}
+[data-testid="stSidebar"]{background:#051617;border-right:1px solid var(--line)}
+[data-testid="stSidebar"]>div:first-child{padding-top:1.6rem}
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p{color:var(--muted)}
+[data-testid="stSidebar"] div[role="radiogroup"]{gap:.3rem}
+[data-testid="stSidebar"] div[role="radiogroup"] label{padding:.7rem .75rem;border:1px solid transparent;border-radius:.5rem;transition:none}
+[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked){background:rgba(34,190,198,.09);border-color:rgba(34,190,198,.28)}
+.block-container{max-width:1440px;padding-top:2.2rem;padding-bottom:4rem}
+h1,h2,h3,p,label,button,input,textarea{font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important}
+h1,h2,h3{color:var(--cream)!important;letter-spacing:-.035em}
+h1{font-size:clamp(2.6rem,5vw,5.2rem)!important;line-height:.98!important;font-weight:800!important;max-width:950px;margin:.25rem 0 1rem!important}
+h2{font-size:2rem!important;margin-top:2.5rem!important}
+h3{font-size:1.25rem!important}
+p,.stCaption,label{color:var(--muted)!important}
+.brand{color:var(--cream);font-size:1.05rem;font-weight:750;letter-spacing:-.03em;margin-bottom:1.4rem}.brand b{color:var(--cyan)}
+.eyebrow{color:var(--cyan);font-size:.72rem;font-weight:700;letter-spacing:.18em;text-transform:uppercase;margin-top:.4rem}
+.hero-sub{font-size:1.12rem;line-height:1.6;max-width:720px;color:var(--muted);margin:0 0 2.4rem}
+.hero-rule{height:1px;background:linear-gradient(90deg,var(--cyan),var(--line) 35%,transparent);margin:0 0 2rem}
+[data-testid="stMetric"]{background:var(--panel);border:1px solid var(--line);border-radius:.65rem;padding:1rem .72rem;min-height:112px}
+[data-testid="stMetricLabel"]{color:var(--muted);font-size:.76rem}
+[data-testid="stMetricValue"]{color:var(--cream);font-size:clamp(1.25rem,2.2vw,2.1rem);font-weight:720;letter-spacing:-.04em}
+.stButton>button,.stDownloadButton>button{border-radius:999px;border:1px solid rgba(34,190,198,.55);background:transparent;color:var(--cream);min-height:2.7rem;padding:.45rem 1.15rem}
+.stButton>button:hover,.stDownloadButton>button:hover{border-color:var(--cyan);color:var(--cyan);background:rgba(34,190,198,.07)}
+.stButton>button[kind="primary"]{background:var(--cyan);color:#021011;border-color:var(--cyan);font-weight:750}
+[data-testid="stDataFrame"],div[data-testid="stExpander"],div[data-baseweb="select"]>div,input,textarea{border-color:var(--line)!important;border-radius:.55rem!important}
+div[data-testid="stExpander"]{background:rgba(7,25,26,.65)}
+[data-testid="stAlert"]{background:var(--panel);border:1px solid var(--line);color:var(--cream)}
+hr{border-color:var(--line)!important}
+@media(max-width:800px){.block-container{padding-top:1rem}h1{font-size:2.65rem!important}.hero-sub{font-size:1rem}}
+</style>
+""",unsafe_allow_html=True)
+st.sidebar.markdown('<div class="brand">voiceera<span style="color:#22bec6">°</span> radar</div>',unsafe_allow_html=True)
 page=st.sidebar.radio("Navigate",PAGES)
-st.sidebar.caption("Only the selected page is rendered.")
-st.title("VoiceERA Developer Radar")
+st.sidebar.caption("Signal in. Clarity out.")
+eyebrow,title,description=PAGE_COPY[page]
+st.markdown(f'<div class="eyebrow">{eyebrow}</div><h1>{title}</h1><p class="hero-sub">{description}</p><div class="hero-rule"></div>',unsafe_allow_html=True)
 
 
 def select_developer(db):
