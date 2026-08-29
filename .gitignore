@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+.pytest_cache/
+*.egg-info/
+*.py[cod]
+data/*.db
+*.csv
+!manual_signals_template.csv
+*.md.tmp

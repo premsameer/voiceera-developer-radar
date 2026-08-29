@@ -1,0 +1,20 @@
+services:
+  api:
+    build: .
+    env_file: .env
+    volumes: ["radar-data:/app/data"]
+    ports: ["8000:8000"]
+  dashboard:
+    build: .
+    env_file: .env
+    volumes: ["radar-data:/app/data"]
+    ports: ["8501:8501"]
+    command: ["streamlit","run","dashboard.py","--server.address=0.0.0.0"]
+  scheduler:
+    build: .
+    env_file: .env
+    volumes: ["radar-data:/app/data"]
+    command: ["python","-m","radar.scheduler"]
+volumes:
+  radar-data:
+
