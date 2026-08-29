@@ -1,12 +1,14 @@
 import math
+from urllib.parse import quote
 import streamlit as st
 from sqlalchemy import select
 from radar.analytics import funnel_analytics,segment_analytics
+from radar.contributor import contributor_metrics
 from radar.config import get_settings
 from radar.db import SessionLocal,init_db
 from radar.digest import csv_digest,markdown_digest
 from radar.intelligence import FUNNEL_STAGES,record_event
-from radar.models import Connector,Developer,DeveloperOrganization,DeveloperSegment,DeveloperTechnology,Evaluation,Organization,ReviewAction,ScanRun
+from radar.models import Connector,ContributorEvent,ContributorPipeline,Developer,DeveloperOrganization,DeveloperSegment,DeveloperTechnology,Evaluation,MaintainerAlert,Organization,ReviewAction,ScanRun
 from radar.queries import developer_rows
 from radar.seed import seed
 from radar.service import run_scan
@@ -14,10 +16,11 @@ from radar.service import run_scan
 st.set_page_config(page_title="VoiceERA Developer Radar",layout="wide")
 init_db()
 with SessionLocal() as db: seed(db)
-PAGES=["Daily Radar","Developer Profile","Intelligence","Funnel Analytics","Sources & Health","Configuration","Run History"]
+PAGES=["Daily Radar","Contributor Pipeline","Developer Profile","Intelligence","Funnel Analytics","Sources & Health","Configuration","Run History"]
 PAGE_COPY={
     "Daily Radar":("01 / RADAR","Developer intelligence, distilled.","Review fresh signals, qualify intent, and move the right builders forward."),
-    "Developer Profile":("02 / PROFILE","See the person behind the signal.","Trace activity, technology, organizations, and verified funnel progress."),
+    "Contributor Pipeline":("02 / CONTRIBUTORS","From signal to contribution.","Track fork-local work and upstream pull requests as separate, evidence-backed paths."),
+    "Developer Profile":("03 / PROFILE","See the person behind the signal.","Trace activity, technology, organizations, and verified funnel progress."),
     "Intelligence":("03 / INTELLIGENCE","Patterns worth acting on.","Understand how your developer audience is forming across segments."),
     "Funnel Analytics":("04 / FUNNEL","From discovery to conversation.","Measure verified movement without losing the evidence behind it."),
     "Sources & Health":("05 / SOURCES","A radar you can trust.","Keep every connector observable, current, and accountable."),
@@ -36,6 +39,7 @@ st.markdown("""
 [data-testid="stSidebar"] div[role="radiogroup"]{gap:.3rem}
 [data-testid="stSidebar"] div[role="radiogroup"] label{padding:.7rem .75rem;border:1px solid transparent;border-radius:.5rem;transition:none}
 [data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked){background:rgba(34,190,198,.09);border-color:rgba(34,190,198,.28)}
+.radar-nav{display:flex;flex-direction:column;gap:.3rem;margin:.25rem 0 1rem}.radar-nav a{color:var(--muted);text-decoration:none;padding:.72rem .8rem;border:1px solid transparent;border-radius:.5rem}.radar-nav a:hover{color:var(--cream);border-color:var(--line)}.radar-nav a.active{color:var(--cream);background:rgba(34,190,198,.09);border-color:rgba(34,190,198,.28)}.radar-nav a.active:before{content:'•';color:var(--cyan);margin-right:.65rem}
 .block-container{max-width:1440px;padding-top:2.2rem;padding-bottom:4rem}
 h1,h2,h3,p,label,button,input,textarea{font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important}
 h1,h2,h3{color:var(--cream)!important;letter-spacing:-.035em}
@@ -64,7 +68,11 @@ hr{border-color:var(--line)!important}
 </style>
 """,unsafe_allow_html=True)
 st.sidebar.markdown('<div class="brand">voiceera<span style="color:#22bec6">°</span> radar</div>',unsafe_allow_html=True)
-page=st.sidebar.radio("Navigate",PAGES)
+page=st.query_params.get("page","Daily Radar")
+if page not in PAGES: page="Daily Radar"
+st.sidebar.caption("Navigate")
+links="".join(f'<a class="{"active" if item==page else ""}" href="?page={quote(item)}" target="_self">{item}</a>' for item in PAGES)
+st.sidebar.markdown(f'<nav class="radar-nav">{links}</nav>',unsafe_allow_html=True)
 st.sidebar.caption("Signal in. Clarity out.")
 eyebrow,title,description=PAGE_COPY[page]
 st.markdown(f'<div class="eyebrow">{eyebrow}</div><h1>{title}</h1><p class="hero-sub">{description}</p><div class="hero-rule"></div>',unsafe_allow_html=True)
@@ -112,6 +120,21 @@ if page=="Daily Radar":
             if m.button("Monitor"):
                 db.add(ReviewAction(evaluation_id=row["evaluation_id"],action="MONITOR",draft_text=text)); db.commit(); st.success("Monitoring")
 
+elif page=="Contributor Pipeline":
+    with SessionLocal() as db:
+        metrics=contributor_metrics(db); c1,c2,c3,c4=st.columns(4)
+        c1.metric("Contributors",metrics["denominator"]); c2.metric("Meaningful activity",f"{metrics['meaningful_activity_rate']:.0%}"); c3.metric("Upstream PR",f"{metrics['upstream_pr_rate']:.0%}"); c4.metric("Merged",metrics["merged"])
+        alerts=db.scalars(select(MaintainerAlert).where(MaintainerAlert.status=="OPEN").order_by(MaintainerAlert.created_at.desc())).all()
+        if alerts:
+            st.subheader("Maintainer alerts")
+            st.dataframe([{"severity":a.severity,"type":a.alert_type,"message":a.message,"created":a.created_at} for a in alerts],width="stretch",hide_index=True)
+        rows=db.execute(select(ContributorPipeline,Developer).join(Developer,Developer.id==ContributorPipeline.developer_id).order_by(ContributorPipeline.latest_event_at.desc())).all()
+        st.subheader("Pipeline")
+        st.caption("Forks remain weak intent until a meaningful fork-local event occurs. Upstream PR stages are shown independently.")
+        st.dataframe([{"developer":d.display_name or d.primary_handle,"github_login":d.primary_handle,"stage":p.stage,"attribution":p.attribution,"upstream":p.upstream_repository,"fork":p.fork_repository,"pr":p.pull_request_number,"checks":p.checks_state,"latest_activity":p.latest_event_at} for p,d in rows],width="stretch",hide_index=True)
+        st.subheader("Conversion by stage")
+        st.dataframe([{"stage":stage,"contributors":count} for stage,count in metrics["stages"].items()],width="stretch",hide_index=True)
+
 elif page=="Developer Profile":
     with SessionLocal() as db:
         d=select_developer(db)
@@ -144,6 +167,11 @@ elif page=="Developer Profile":
                     record_event(db,d,event_type,"MANUAL_VERIFIED","manual",metadata={"note":note}); db.commit(); st.rerun()
             st.subheader("Activity timeline")
             for signal in sorted(d.signals,key=lambda x:x.activity_at,reverse=True): st.markdown(f"- {signal.activity_at.isoformat()} [{signal.activity_type}: {signal.title}]({signal.canonical_url})")
+            contribution_events=db.scalars(select(ContributorEvent).where(ContributorEvent.developer_id==d.id).order_by(ContributorEvent.occurred_at.desc())).all()
+            if contribution_events:
+                st.subheader("Contribution timeline")
+                st.caption("Repository scope makes fork-local activity distinct from upstream pull-request activity.")
+                st.dataframe([{"when":e.occurred_at,"event":e.event_type,"scope":e.repository_scope,"repository":e.fork_full_name if e.repository_scope=="FORK" else e.repository_full_name,"pull_request":e.pull_request_number,"attribution":e.attribution,"evidence":e.attribution_evidence,"url":e.canonical_url} for e in contribution_events],width="stretch",hide_index=True)
 
 elif page=="Intelligence":
     with SessionLocal() as db:

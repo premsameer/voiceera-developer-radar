@@ -6,6 +6,9 @@ revision="0002"; down_revision="0001"; branch_labels=None; depends_on=None
 
 
 def upgrade():
+    inspector=sa.inspect(op.get_bind())
+    developer_columns={column["name"] for column in inspector.get_columns("developers")}
+    if "primary_segment_code" in developer_columns and "engagement_events" in inspector.get_table_names(): return
     with op.batch_alter_table("developers") as batch:
         batch.add_column(sa.Column("primary_segment_code",sa.String(),nullable=False,server_default="UNKNOWN_DEVELOPER"))
         batch.add_column(sa.Column("intent_strength",sa.Integer(),nullable=False,server_default="0"))

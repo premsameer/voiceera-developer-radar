@@ -1,5 +1,5 @@
 import secrets
-from fastapi import Depends, FastAPI, Header, HTTPException, Response, UploadFile
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, UploadFile
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
@@ -7,7 +7,8 @@ from .config import get_settings
 from .db import get_db, init_db
 from .digest import csv_digest, markdown_digest
 from .importer import import_csv_text
-from .models import Campaign,Connector,Developer,DeveloperOrganization,DeveloperSegment,DeveloperTechnology,EngagementEvent,Evaluation,MessageVersion,Organization,ReviewAction,ScanRun,Signal
+from .models import Campaign,Connector,ContributorEvent,ContributorPipeline,Developer,DeveloperOrganization,DeveloperSegment,DeveloperTechnology,EngagementEvent,Evaluation,MaintainerAlert,MessageVersion,Organization,ReviewAction,ScanRun,Signal
+from .contributor import contributor_metrics, detect_stalled_prs, github_access_token, process_webhook, reconcile_github, verify_webhook_signature
 from .queries import developer_rows
 from .schemas import CampaignCreate,DraftPatch,EngagementEventCreate,OrganizationLinkCreate,ScanRequest,SegmentOverride,StagePatch
 from .intelligence import FUNNEL_STAGES,record_event,update_next_action
@@ -31,6 +32,41 @@ def admin(x_admin_secret: str=Header(default="")):
 
 @app.get("/health")
 def health(): return {"status":"ok"}
+
+@app.post("/api/github/webhook")
+async def github_webhook(request:Request,x_github_delivery:str=Header(default=""),x_github_event:str=Header(default=""),x_hub_signature_256:str=Header(default=""),db:Session=Depends(get_db)):
+    body=await request.body(); secret=get_settings().github_webhook_secret or ""
+    if not verify_webhook_signature(body,x_hub_signature_256,secret): raise HTTPException(401,"Invalid webhook signature")
+    if not x_github_delivery or not x_github_event: raise HTTPException(400,"Missing GitHub delivery headers")
+    try: payload=await request.json()
+    except Exception: raise HTTPException(400,"Invalid JSON payload")
+    return process_webhook(db,x_github_delivery,x_github_event,payload)
+
+@app.post("/api/contributors/reconcile",dependencies=[Depends(admin)])
+def reconcile_contributors(db:Session=Depends(get_db)):
+    settings=get_settings()
+    token=github_access_token(settings)
+    if not token: raise HTTPException(503,"GitHub App credentials or installation token are not configured")
+    repositories=[x.strip() for x in settings.github_contributor_repositories.split(",") if x.strip()]
+    return reconcile_github(db,repositories,token)
+
+@app.post("/api/contributors/detect-stalled",dependencies=[Depends(admin)])
+def stalled_contributors(db:Session=Depends(get_db)): return {"alerts_created":detect_stalled_prs(db,get_settings().contributor_stalled_pr_days)}
+
+@app.get("/api/contributors")
+def contributors(db:Session=Depends(get_db)):
+    return db.execute(select(ContributorPipeline,Developer).join(Developer,Developer.id==ContributorPipeline.developer_id).order_by(ContributorPipeline.latest_event_at.desc())).all()
+
+@app.get("/api/contributors/alerts/open")
+def contributor_alerts(db:Session=Depends(get_db)): return db.scalars(select(MaintainerAlert).where(MaintainerAlert.status=="OPEN").order_by(MaintainerAlert.created_at.desc())).all()
+
+@app.get("/api/contributors/{developer_id}/timeline")
+def contributor_timeline(developer_id:int,db:Session=Depends(get_db)):
+    if not db.get(Developer,developer_id): raise HTTPException(404,"Developer not found")
+    return db.scalars(select(ContributorEvent).where(ContributorEvent.developer_id==developer_id).order_by(ContributorEvent.occurred_at.desc())).all()
+
+@app.get("/api/analytics/contributors")
+def contributor_conversion(db:Session=Depends(get_db)): return contributor_metrics(db)
 
 @app.post("/api/scans",dependencies=[Depends(admin)])
 def scan(body: ScanRequest,db:Session=Depends(get_db)): return run_scan(db,body.sources,body.lookback_days)

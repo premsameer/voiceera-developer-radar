@@ -8,6 +8,12 @@ class Settings(BaseSettings):
     app_timezone: str = "Asia/Kolkata"
     admin_secret: str = "change-me"
     github_token: str | None = None
+    github_webhook_secret: str | None = None
+    github_app_id: str | None = None
+    github_app_installation_id: str | None = None
+    github_app_private_key_path: str | None = None
+    github_contributor_repositories: str = ""
+    contributor_stalled_pr_days: int = 7
     reddit_client_id: str | None = None
     reddit_client_secret: str | None = None
     reddit_user_agent: str = "VoiceERADeveloperRadar/0.1"

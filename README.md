@@ -130,3 +130,68 @@ Coverage includes normalization, intent classification, dynamic recency, bot exc
 ## Deployment
 
 Set `DATABASE_URL` to a PostgreSQL URL and install `.[postgres]`. Run `alembic upgrade head` as a release step, keep the API/dashboard behind HTTPS, store secrets in the deployment secret manager, and call the protected scan endpoint from platform cron if the scheduler container is not used.
+# V2D Contributor Pipeline
+
+V2D adds a read-only, evidence-backed path from GitHub discovery to contribution. It does **not** comment, review, merge, or message contributors. Identities are matched only by immutable GitHub user ID or exact GitHub login—never by display name or email.
+
+## GitHub App permissions and events
+
+Create a GitHub App with a random webhook secret and only these repository permissions:
+
+- Metadata: read-only (GitHub grants this baseline permission)
+- Contents: read-only (push/commit reconciliation and public-fork polling)
+- Issues: read-only (issues and issue comments)
+- Pull requests: read-only (PRs, reviews, and review comments)
+- Checks: read-only (check runs and check suites)
+
+Subscribe to: `fork`, `watch`, `issues`, `issue_comment`, `pull_request`, `pull_request_review`, `pull_request_review_comment`, `push`, `check_run`, and `check_suite`. Do not grant write permissions. GitHub determines available webhook subscriptions from the App permissions; keep the App installed only on the upstream repositories that should feed the radar.
+
+Set the webhook URL to `https://YOUR-RADAR/api/github/webhook`, content type to `application/json`, and use the same secret as `GITHUB_WEBHOOK_SECRET`. Every request must include a valid `X-Hub-Signature-256`; invalid signatures receive `401`. `X-GitHub-Delivery` is stored uniquely, so redeliveries are acknowledged without processing twice.
+
+## Attribution and stages
+
+Attribution is deliberately conservative:
+
+- `ORGANIC`: no outreach existed when the activity was observed.
+- `PRE_EXISTING`: activity predates the earliest recorded outreach.
+- `OUTREACH_ATTRIBUTED`: an explicit VoiceERA campaign identifier is attached to the evidence.
+- `UNKNOWN`: identity/evidence is insufficient, including activity that merely happened after outreach.
+
+Stages are `DISCOVERED`, `FORKED`, `MEANINGFUL_FORK_ACTIVITY`, `UPSTREAM_PR_OPENED`, `REVIEW_IN_PROGRESS`, `CHANGES_REQUESTED`, `CHECKS_PASSING`, `MERGED`, `CLOSED_UNMERGED`, and `STALLED`. A fork or watch alone is weak intent. Fork-local pushes are shown as `FORK`; pull requests and their reviews/checks against the watched repository are shown as `UPSTREAM`.
+
+## Reconciliation and polling
+
+The daily scheduler performs the existing radar scan, then reconciles configured upstream repositories through GitHub REST and detects stalled PRs. Reconciliation covers forks, recently updated pull requests, reviews, and checks. It also polls commits for public forks already known to the pipeline. REST events have stable source/external IDs, making reconciliation idempotent independently of webhook delivery IDs.
+
+Configure comma-separated repositories and an installation access token:
+
+```env
+GITHUB_CONTRIBUTOR_REPOSITORIES=voiceera/repo-one,voiceera/repo-two
+GITHUB_TOKEN=<short-lived GitHub App installation token>
+GITHUB_WEBHOOK_SECRET=<long-random-secret>
+CONTRIBUTOR_STALLED_PR_DAYS=7
+```
+
+The service accepts a pre-minted installation token in `GITHUB_TOKEN`. If it is omitted, V2D mints a short-lived installation token from `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`, and `GITHUB_APP_PRIVATE_KEY_PATH`; keep the PEM file in the deployment secret store rather than the repository.
+
+## Local development
+
+1. Copy `.env.example` to `.env`, set a webhook secret, repositories, and a read-only installation token.
+2. Run `alembic upgrade head`.
+3. Start the API with `uvicorn radar.api:app --reload --port 8000` and the dashboard with `streamlit run dashboard.py`.
+4. Expose port 8000 through an HTTPS tunnel and set the App webhook URL to `https://TUNNEL/api/github/webhook`.
+5. Use GitHub's Recent Deliveries page to send a test delivery. Do not disable signature verification for local testing.
+
+Admin endpoints are `POST /api/contributors/reconcile` and `POST /api/contributors/detect-stalled` with `X-Admin-Secret`. Read endpoints expose the pipeline, per-developer contribution timeline, open maintainer alerts, and contributor conversion metrics.
+
+## Production deployment
+
+Run the API and scheduler as separate processes against the same durable database. Terminate TLS at the platform/load balancer, preserve the raw webhook body, keep `GITHUB_WEBHOOK_SECRET` and App private-key material in the platform secret store, run `alembic upgrade head` before the new application starts, and ensure only one scheduler instance executes the daily reconciliation. Monitor failed delivery rows and API rate limits.
+
+## Known fork-monitoring limitations
+
+- A GitHub App installed on the upstream repository does not automatically receive push webhooks from a contributor's fork.
+- V2D therefore polls only forks already discovered through the upstream fork list, and only while they remain publicly readable.
+- Private, deleted, renamed, or access-restricted forks can disappear from reconciliation.
+- The default reconciliation window is two days and each endpoint currently reads the first 100 results; very high-volume repositories should add cursor pagination and a durable per-repository watermark.
+- A fork is not treated as meaningful activity until a later commit/push or upstream contribution is observed.

@@ -54,6 +54,7 @@ class Repository(Base):
 class Developer(Base):
     __tablename__ = "developers"
     id: Mapped[int] = mapped_column(primary_key=True)
+    github_user_id: Mapped[int | None] = mapped_column(Integer, unique=True, index=True)
     primary_source: Mapped[str]; primary_handle: Mapped[str]
     display_name: Mapped[str | None]; profile_url: Mapped[str | None]
     public_links_json: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -215,3 +216,71 @@ class MessageVersion(Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     channel: Mapped[str | None]
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class GitHubWebhookDelivery(Base):
+    __tablename__ = "github_webhook_deliveries"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    delivery_id: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    event_name: Mapped[str] = mapped_column(String(60))
+    action: Mapped[str | None] = mapped_column(String(60))
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(20), default="RECEIVED")
+    error: Mapped[str | None] = mapped_column(Text)
+
+
+class ContributorEvent(Base):
+    __tablename__ = "contributor_events"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source: Mapped[str] = mapped_column(String(30))
+    external_id: Mapped[str] = mapped_column(String(220))
+    event_type: Mapped[str] = mapped_column(String(60), index=True)
+    action: Mapped[str | None] = mapped_column(String(60))
+    actor_github_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    actor_login: Mapped[str | None] = mapped_column(String(100), index=True)
+    developer_id: Mapped[int | None] = mapped_column(ForeignKey("developers.id", ondelete="SET NULL"), index=True)
+    repository_full_name: Mapped[str] = mapped_column(String(220), index=True)
+    repository_scope: Mapped[str] = mapped_column(String(20), default="UPSTREAM")
+    fork_full_name: Mapped[str | None] = mapped_column(String(220), index=True)
+    pull_request_number: Mapped[int | None] = mapped_column(Integer, index=True)
+    canonical_url: Mapped[str | None]
+    title: Mapped[str | None] = mapped_column(Text)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    attribution: Mapped[str] = mapped_column(String(30), default="UNKNOWN", index=True)
+    attribution_evidence: Mapped[str | None] = mapped_column(Text)
+    meaningful: Mapped[bool] = mapped_column(Boolean, default=False)
+    raw_metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    __table_args__ = (UniqueConstraint("source", "external_id"),)
+
+
+class ContributorPipeline(Base):
+    __tablename__ = "contributor_pipeline"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    developer_id: Mapped[int] = mapped_column(ForeignKey("developers.id", ondelete="CASCADE"), unique=True, index=True)
+    stage: Mapped[str] = mapped_column(String(40), default="DISCOVERED", index=True)
+    attribution: Mapped[str] = mapped_column(String(30), default="UNKNOWN", index=True)
+    first_event_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    latest_event_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    upstream_repository: Mapped[str | None] = mapped_column(String(220))
+    fork_repository: Mapped[str | None] = mapped_column(String(220))
+    pull_request_number: Mapped[int | None] = mapped_column(Integer)
+    last_meaningful_activity_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    checks_state: Mapped[str | None] = mapped_column(String(30))
+    stalled_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class MaintainerAlert(Base):
+    __tablename__ = "maintainer_alerts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    developer_id: Mapped[int | None] = mapped_column(ForeignKey("developers.id", ondelete="CASCADE"), index=True)
+    contributor_event_id: Mapped[int | None] = mapped_column(ForeignKey("contributor_events.id", ondelete="CASCADE"))
+    alert_type: Mapped[str] = mapped_column(String(40), index=True)
+    severity: Mapped[str] = mapped_column(String(20), default="INFO")
+    message: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="OPEN", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    __table_args__ = (UniqueConstraint("alert_type", "contributor_event_id"),)
