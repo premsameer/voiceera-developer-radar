@@ -101,8 +101,10 @@ def override_segment(developer_id:int,body:SegmentOverride,db:Session=Depends(ge
     allowed={"VOICE_APP_BUILDER","REALTIME_TELEPHONY_ENGINEER","SPEECH_ML_ENGINEER","INDIC_LANGUAGE_BUILDER","OSS_CONTRIBUTOR","DEVELOPER_EDUCATOR","UNKNOWN_DEVELOPER"}
     if body.segment_code not in allowed: raise HTTPException(422,"Invalid segment")
     for row in db.scalars(select(DeveloperSegment).where(DeveloperSegment.developer_id==developer_id)): row.is_primary=False
-    row=DeveloperSegment(developer_id=developer_id,segment_code=body.segment_code,is_primary=True,confidence=1.0,evidence_signal_id=body.evidence_signal_id,classifier_version="manual-v2a",manual_override=True,override_reason=body.reason)
-    db.add(row); developer.primary_segment_code=body.segment_code; db.commit(); return row
+    row=db.scalar(select(DeveloperSegment).where(DeveloperSegment.developer_id==developer_id,DeveloperSegment.segment_code==body.segment_code,DeveloperSegment.manual_override.is_(True)))
+    if not row: row=DeveloperSegment(developer_id=developer_id,segment_code=body.segment_code,confidence=1.0,classifier_version="manual-v2a",manual_override=True); db.add(row)
+    row.is_primary=True; row.evidence_signal_id=body.evidence_signal_id; row.override_reason=body.reason
+    developer.primary_segment_code=body.segment_code; db.commit(); return row
 
 @app.get("/api/developers/{developer_id}/technologies")
 def technologies(developer_id:int,db:Session=Depends(get_db)): return db.scalars(select(DeveloperTechnology).where(DeveloperTechnology.developer_id==developer_id)).all()

@@ -3,7 +3,7 @@ from sqlalchemy import select
 from radar.config import get_settings
 from radar.db import SessionLocal, init_db
 from radar.digest import csv_digest, markdown_digest
-from radar.models import Connector,Developer,DeveloperSegment,DeveloperTechnology,EngagementEvent,Evaluation,ReviewAction,ScanRun
+from radar.models import Connector,Developer,DeveloperOrganization,DeveloperSegment,DeveloperTechnology,EngagementEvent,Evaluation,Organization,ReviewAction,ScanRun
 from radar.intelligence import FUNNEL_STAGES,record_event
 from radar.analytics import funnel_analytics,segment_analytics
 from radar.queries import developer_rows
@@ -49,7 +49,23 @@ with profiles:
                 st.write(d.profile_url or "No public profile URL")
                 st.metric("Intent strength",d.intent_strength); st.info(f"Next: {d.next_best_action} — {d.next_action_reason or ''}")
                 segments=db.scalars(select(DeveloperSegment).where(DeveloperSegment.developer_id==d.id)).all(); st.write("Segments",[{"code":x.segment_code,"primary":x.is_primary,"manual":x.manual_override,"evidence_signal":x.evidence_signal_id} for x in segments])
+                override_code=st.selectbox("Override primary segment",["VOICE_APP_BUILDER","REALTIME_TELEPHONY_ENGINEER","SPEECH_ML_ENGINEER","INDIC_LANGUAGE_BUILDER","OSS_CONTRIBUTOR","DEVELOPER_EDUCATOR","UNKNOWN_DEVELOPER"],key=f"segment-{d.id}")
+                override_reason=st.text_input("Override reason",key=f"segment-reason-{d.id}")
+                if st.button("Save segment override",key=f"segment-save-{d.id}"):
+                    if len(override_reason.strip())<3: st.error("A reason is required.")
+                    else:
+                        for segment in segments: segment.is_primary=False
+                        evidence=max(d.signals,key=lambda x:x.activity_at).id if d.signals else None
+                        manual=db.scalar(select(DeveloperSegment).where(DeveloperSegment.developer_id==d.id,DeveloperSegment.segment_code==override_code,DeveloperSegment.manual_override.is_(True)))
+                        if not manual: manual=DeveloperSegment(developer_id=d.id,segment_code=override_code,confidence=1.0,classifier_version="manual-v2a",manual_override=True); db.add(manual)
+                        manual.is_primary=True; manual.evidence_signal_id=evidence; manual.override_reason=override_reason; d.primary_segment_code=override_code; db.commit(); st.rerun()
                 technologies=db.scalars(select(DeveloperTechnology).where(DeveloperTechnology.developer_id==d.id)).all(); st.write("Technologies",[{"type":x.technology_type,"name":x.technology_name,"evidence_signal":x.evidence_signal_id} for x in technologies])
+                links=db.execute(select(DeveloperOrganization,Organization).join(Organization,Organization.id==DeveloperOrganization.organization_id).where(DeveloperOrganization.developer_id==d.id)).all(); st.write("Organizations",[{"name":org.name,"relationship":link.relationship_type,"evidence":link.evidence_url} for link,org in links])
+                org_name=st.text_input("Organization name",key=f"org-name-{d.id}"); org_url=st.text_input("Organization evidence URL",key=f"org-url-{d.id}"); relationship=st.selectbox("Relationship",["MEMBER","EMPLOYEE","MAINTAINER","CONTRIBUTOR","MANUAL_VERIFIED"],key=f"org-rel-{d.id}")
+                if st.button("Add verified organization",key=f"org-save-{d.id}"):
+                    if not org_name.strip() or not org_url.startswith("http"): st.error("Name and public evidence URL are required.")
+                    else:
+                        org=Organization(name=org_name.strip(),profile_url=org_url,metadata_json={}); db.add(org); db.flush(); db.add(DeveloperOrganization(developer_id=d.id,organization_id=org.id,relationship_type=relationship,evidence_url=org_url,manually_verified=True)); db.commit(); st.rerun()
                 for s in sorted(d.signals,key=lambda x:x.activity_at,reverse=True): st.markdown(f"- {s.activity_at.isoformat()} [{s.activity_type}: {s.title}]({s.canonical_url})")
                 event_type=st.selectbox("Record funnel event",FUNNEL_STAGES,key=f"event-{d.id}")
                 note=st.text_input("Evidence/note",key=f"note-{d.id}")
