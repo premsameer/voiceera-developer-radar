@@ -54,6 +54,9 @@ p,.stCaption,label{color:var(--muted)!important}
 .stButton>button:hover,.stDownloadButton>button:hover{border-color:var(--cyan);color:var(--cyan);background:rgba(34,190,198,.07)}
 .stButton>button[kind="primary"]{background:var(--cyan);color:#021011;border-color:var(--cyan);font-weight:750}
 [data-testid="stDataFrame"],div[data-testid="stExpander"],div[data-baseweb="select"]>div,input,textarea{border-color:var(--line)!important;border-radius:.55rem!important}
+[data-testid="stTextArea"] textarea,[data-testid="stTextInput"] input,[data-testid="stNumberInput"] input{background:var(--panel-2)!important;color:var(--cream)!important;-webkit-text-fill-color:var(--cream)!important;caret-color:var(--cyan)!important}
+[data-testid="stTextArea"] textarea::placeholder,[data-testid="stTextInput"] input::placeholder{color:rgba(244,239,230,.38)!important;-webkit-text-fill-color:rgba(244,239,230,.38)!important}
+[data-testid="stTextArea"] textarea:focus,[data-testid="stTextInput"] input:focus{border-color:var(--cyan)!important;box-shadow:0 0 0 1px var(--cyan)!important}
 div[data-testid="stExpander"]{background:rgba(7,25,26,.65)}
 [data-testid="stAlert"]{background:var(--panel);border:1px solid var(--line);color:var(--cream)}
 hr{border-color:var(--line)!important}
