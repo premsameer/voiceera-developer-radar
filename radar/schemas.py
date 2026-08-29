@@ -37,3 +37,35 @@ class DraftPatch(BaseModel):
 class StagePatch(BaseModel):
     stage: str
 
+
+class SegmentOverride(BaseModel):
+    segment_code: str
+    reason: str = Field(min_length=3,max_length=500)
+    evidence_signal_id: int | None = None
+
+
+class EngagementEventCreate(BaseModel):
+    event_type: str
+    event_at: datetime | None = None
+    evidence_level: str = "MANUAL_VERIFIED"
+    source: str = "manual"
+    campaign_id: int | None = None
+    metadata: dict = Field(default_factory=dict)
+
+
+class OrganizationLinkCreate(BaseModel):
+    name: str
+    relationship_type: str
+    evidence_url: HttpUrl
+    canonical_domain: str | None = None
+    github_org: str | None = None
+    profile_url: HttpUrl | None = None
+    manually_verified: bool = True
+
+
+class CampaignCreate(BaseModel):
+    name: str
+    destination_url: HttpUrl
+    segment_code: str | None = None
+    source: str | None = None
+    route: str | None = None

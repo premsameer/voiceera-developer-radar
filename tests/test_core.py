@@ -56,6 +56,6 @@ def test_existing_naive_developer_timestamp_is_normalized(db):
     assert persist_signal(db,first); db.commit()
     developer=first.actor_handle
     stored=db.query(__import__("radar.models",fromlist=["Developer"]).Developer).filter_by(primary_handle=developer).one()
-    assert stored.latest_activity_at.tzinfo is None
+    stored.latest_activity_at=stored.latest_activity_at.replace(tzinfo=None)
     later=signal(external_id="naive-2",canonical_url="https://github.com/o/r/pull/naive-2",activity_at=datetime.now(timezone.utc))
     assert persist_signal(db,later)

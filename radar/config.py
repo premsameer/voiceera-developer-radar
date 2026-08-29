@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     llm_provider: str | None = None
     llm_api_key: str | None = None
     daily_schedule: str = "09:00"
+    v2_enabled: bool = True
+    analytics_minimum_sample: int = 10
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     def ensure_data_dir(self) -> None:
@@ -25,4 +27,3 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-

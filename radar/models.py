@@ -61,6 +61,11 @@ class Developer(Base):
     latest_intent_evidence: Mapped[str | None] = mapped_column(Text)
     latest_activity_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     funnel_stage: Mapped[str] = mapped_column(default="DISCOVERED")
+    primary_segment_code: Mapped[str] = mapped_column(default="UNKNOWN_DEVELOPER")
+    intent_strength: Mapped[int] = mapped_column(default=0)
+    current_funnel_stage: Mapped[str] = mapped_column(default="DISCOVERED")
+    next_best_action: Mapped[str] = mapped_column(default="MONITOR")
+    next_action_reason: Mapped[str | None] = mapped_column(Text)
     signals: Mapped[list["Signal"]] = relationship(back_populates="developer", cascade="all, delete-orphan")
     __table_args__ = (UniqueConstraint("primary_source", "primary_handle"),)
 
@@ -77,6 +82,8 @@ class Signal(Base):
     intent_evidence: Mapped[str] = mapped_column(Text)
     raw_metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
     content_hash: Mapped[str] = mapped_column(index=True)
+    intent_strength_base: Mapped[int] = mapped_column(default=0)
+    intent_strength_final: Mapped[int] = mapped_column(default=0)
     developer: Mapped[Developer] = relationship(back_populates="signals")
     repository: Mapped[Repository | None] = relationship()
     evaluation: Mapped["Evaluation | None"] = relationship(back_populates="signal", cascade="all, delete-orphan")
@@ -111,4 +118,100 @@ class ReviewAction(Base):
     evaluation_id: Mapped[int] = mapped_column(ForeignKey("evaluations.id"))
     action: Mapped[str]; draft_text: Mapped[str | None] = mapped_column(Text); edited_text: Mapped[str | None] = mapped_column(Text)
     reviewer: Mapped[str] = mapped_column(default="admin"); notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    campaign_id: Mapped[int | None] = mapped_column(ForeignKey("campaigns.id"))
+    outcome_status: Mapped[str | None]
+
+
+class DeveloperSegment(Base):
+    __tablename__ = "developer_segments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    developer_id: Mapped[int] = mapped_column(ForeignKey("developers.id", ondelete="CASCADE"), index=True)
+    segment_code: Mapped[str] = mapped_column(String(50))
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    evidence_signal_id: Mapped[int | None] = mapped_column(ForeignKey("signals.id", ondelete="SET NULL"))
+    classifier_version: Mapped[str] = mapped_column(default="segments-v2a-rules-1")
+    manual_override: Mapped[bool] = mapped_column(Boolean, default=False)
+    override_reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    __table_args__ = (UniqueConstraint("developer_id", "segment_code", "manual_override"),)
+
+
+class DeveloperTechnology(Base):
+    __tablename__ = "developer_technologies"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    developer_id: Mapped[int] = mapped_column(ForeignKey("developers.id", ondelete="CASCADE"), index=True)
+    technology_type: Mapped[str] = mapped_column(String(50))
+    technology_name: Mapped[str] = mapped_column(String(100))
+    evidence_signal_id: Mapped[int] = mapped_column(ForeignKey("signals.id", ondelete="CASCADE"))
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    __table_args__ = (UniqueConstraint("developer_id", "technology_type", "technology_name", "evidence_signal_id"),)
+
+
+class Organization(Base):
+    __tablename__ = "organizations"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    canonical_domain: Mapped[str | None] = mapped_column(String(200), unique=True)
+    github_org: Mapped[str | None] = mapped_column(String(100), unique=True)
+    profile_url: Mapped[str | None]
+    organization_type: Mapped[str] = mapped_column(default="UNKNOWN")
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class DeveloperOrganization(Base):
+    __tablename__ = "developer_organizations"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    developer_id: Mapped[int] = mapped_column(ForeignKey("developers.id", ondelete="CASCADE"), index=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    relationship_type: Mapped[str] = mapped_column(String(50))
+    evidence_url: Mapped[str]
+    valid_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    manually_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    __table_args__ = (UniqueConstraint("developer_id", "organization_id", "relationship_type"),)
+
+
+class Campaign(Base):
+    __tablename__ = "campaigns"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str]
+    segment_code: Mapped[str | None]
+    source: Mapped[str | None]
+    route: Mapped[str | None]
+    tracking_code: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    destination_url: Mapped[str]
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class EngagementEvent(Base):
+    __tablename__ = "engagement_events"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    developer_id: Mapped[int | None] = mapped_column(ForeignKey("developers.id", ondelete="CASCADE"), index=True)
+    event_type: Mapped[str] = mapped_column(String(50))
+    event_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    evidence_level: Mapped[str] = mapped_column(String(30))
+    source: Mapped[str] = mapped_column(String(30))
+    campaign_id: Mapped[int | None] = mapped_column(ForeignKey("campaigns.id", ondelete="SET NULL"))
+    message_id: Mapped[int | None] = mapped_column(ForeignKey("message_versions.id", ondelete="SET NULL"))
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class MessageVersion(Base):
+    __tablename__ = "message_versions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    review_action_id: Mapped[int | None] = mapped_column(ForeignKey("review_actions.id", ondelete="SET NULL"))
+    campaign_id: Mapped[int | None] = mapped_column(ForeignKey("campaigns.id", ondelete="SET NULL"))
+    template_version: Mapped[str] = mapped_column(default="v1")
+    generated_text: Mapped[str] = mapped_column(Text)
+    final_text: Mapped[str | None] = mapped_column(Text)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    channel: Mapped[str | None]
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

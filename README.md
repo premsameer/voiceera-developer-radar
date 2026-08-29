@@ -2,6 +2,8 @@
 
 A production-minded MVP that discovers public, dated voice-AI activity, applies deterministic qualification, matches one VoiceERA route, and prepares a human-reviewed daily queue. It never sends outreach.
 
+V2A/V2B adds evidence-backed developer segmentation, inspectable intent-strength scoring, technology evidence, safe organization links, event-derived adoption funnels, attributed tracking links, deterministic next-best actions, and segment/funnel analytics. All V1 scans, reviews, and exports remain supported.
+
 ## What is included
 
 - Official GitHub REST, Reddit OAuth, DEV/Forem, Hacker News Firebase, and RSS/Atom connectors
@@ -23,6 +25,8 @@ cp .env.example .env         # Windows: Copy-Item .env.example .env
 radar init-db
 radar seed-config
 radar seed-demo
+alembic upgrade head
+radar backfill-v2
 uvicorn radar.api:app --reload
 ```
 
@@ -79,6 +83,29 @@ SQLAlchemy audit store
        ↙          ↘
 FastAPI/CLI     Streamlit review + exports
 ```
+
+## V2A/V2B intelligence
+
+Set `V2_ENABLED=true` to enrich new signals. Existing installations should run `alembic upgrade head` followed by `radar backfill-v2` once. The backfill retains V1 records and derives segments, intent strength, and technology evidence from stored activities.
+
+Developer segments and technologies always retain an evidence signal. Manual segment overrides are separate records with a required reason and never erase the rules result. Organization links require a public evidence URL. Funnel stages are derived from `engagement_events`; the legacy stage API now records a verified manual event instead of directly overwriting state.
+
+New endpoints include:
+
+```text
+GET/POST /api/developers/{id}/segments
+GET      /api/developers/{id}/technologies
+GET      /api/developers/{id}/timeline
+POST     /api/developers/{id}/events
+POST     /api/developers/{id}/organizations
+POST     /api/campaigns
+GET      /api/analytics/funnel
+GET      /api/analytics/segments
+GET      /api/analytics/messages
+GET      /r/{tracking_code}
+```
+
+Tracking redirects record only an attributed visit and never imply installation. Product activation ingestion remains optional future integration work; manual verified events are supported now. Analytics return denominators and flag small samples below `ANALYTICS_MINIMUM_SAMPLE`.
 
 Every PASS has a source URL, exact timestamp, and evidence excerpt. `days_since_activity` is calculated at read time in `APP_TIMEZONE`. Cross-platform identities are not inferred. Commit emails are neither requested nor stored. The optional OpenAI adapter validates structured output and refuses a PASS missing proof; the application defaults to rules-only mode.
 

@@ -2,7 +2,7 @@ import csv, io
 from .queries import developer_rows
 
 
-FIELDS=["developer","handle","profile","observed_intent","intent_evidence","repository","repository_url","recent_activity","activity_url","last_activity","days_since_activity","qualification","score","reason","voiceera_route","matched_opportunity","opportunity_url","personalised_message","funnel_status"]
+FIELDS=["developer","handle","profile","primary_segment","intent_strength","observed_intent","intent_evidence","repository","repository_url","recent_activity","activity_url","last_activity","days_since_activity","qualification","score","reason","voiceera_route","matched_opportunity","opportunity_url","personalised_message","funnel_status","next_best_action","next_action_reason"]
 
 
 def csv_digest(session, timezone_name):

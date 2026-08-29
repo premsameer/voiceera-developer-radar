@@ -10,6 +10,7 @@ from .connectors.reddit import RedditConnector
 from .models import Connector, Developer, Evaluation, Opportunity, Repository, Route, ScanRun, Signal, Verdict
 from .schemas import NormalizedSignal
 from .scoring import choose_opportunity, classify_intent, draft_message, evaluate
+from .intelligence import enrich_developer
 
 
 def adapter_for(name: str, settings: Settings):
@@ -53,6 +54,7 @@ def persist_signal(session: Session, item: NormalizedSignal) -> bool:
     route,opportunity=choose_opportunity(item,opportunities) if verdict==Verdict.PASS else (Route.MONITOR,None)
     evaluation=Evaluation(signal_id=signal.id,rule_score=score,verdict=verdict.value,segment=segment,observed_intent=intent.value,intent_evidence=item.intent_evidence,proof_quote=item.intent_evidence[:200] if verdict==Verdict.PASS else None,proof_url=url,proof_date=item.activity_at,reason=reason,confidence=1.0,recommended_route=route.value,matched_opportunity_id=opportunity.id if opportunity else None,draft_text=draft_message(item,route,opportunity) if verdict==Verdict.PASS else None)
     session.add(evaluation); developer.segment=segment
+    if get_settings().v2_enabled: enrich_developer(session,signal,item)
     return True
 
 

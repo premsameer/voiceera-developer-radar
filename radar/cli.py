@@ -9,6 +9,7 @@ from .importer import import_csv_text
 from .models import Connector
 from .seed import seed
 from .demo import seed_demo
+from .backfill import backfill_v2
 from .service import run_scan
 
 app=typer.Typer(help="VoiceERA Developer Radar")
@@ -44,3 +45,8 @@ def demo(count:int=20):
     init_db()
     with SessionLocal() as db:
         seed(db); typer.echo(f"Added {seed_demo(db,count)} demo signals")
+
+@app.command("backfill-v2")
+def backfill():
+    init_db()
+    with SessionLocal() as db: typer.echo(f"Enriched {backfill_v2(db)} existing signals")
